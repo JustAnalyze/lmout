@@ -1,0 +1,65 @@
+[project]
+name = "lock_me_out"
+version = "0.1.0"
+description = "A clean, robust Python tool using modern libraries."
+authors = [{ name = "Justin Nacu", email = "engr.nacu@gmail.com" }]
+readme = "README.md"
+requires-python = ">=3.12"
+# Core dependencies that stop you from reinventing the wheel
+dependencies = [
+    "pydantic>=2.0",          # Data validation & Settings
+    "pydantic-settings>=2.0", # .env management
+    "loguru>=0.7",            # Simple, robust logging
+    "typer>=0.9",             # Elegant CLI creation
+    "rich>=13.0",             # Beautiful terminal output
+    "psutil>=7.2.1",
+    "textual>=7.2.0",
+    "platformdirs>=4.5.1",
+]
+
+# Standardizes how your project is built and shared
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# Forces uv to install the 'src' folder as a package in your venv
+[tool.uv]
+package = true
+
+# The CLI entry point: run your project as a command
+[project.scripts]
+lmout = "lock_me_out.main:app"
+
+# --- DEVELOPMENT TOOLS ---
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",     # Testing framework
+    "pytest-cov>=4.1", # Test coverage reporting
+    "ruff>=0.2",       # Linter & Formatter (replaces 5+ other tools)
+    "mypy>=1.8",       # Static type checking
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+
+[tool.ruff.lint]
+# Select rules (E=Error, F=Pyflakes, I=Isort, B=Bugbear)
+select = ["E", "F", "I", "B", "UP"]
+ignore = []
+
+[tool.ruff.format]
+# Keep the code 'Beautiful' as per Zen of Python
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+# Look for tests in the 'tests' folder
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.mypy]
+# Enforce 'Static datatype annotation' as per your preference
+strict = true
+ignore_missing_imports = true

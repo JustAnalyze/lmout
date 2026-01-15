@@ -1,0 +1,11 @@
+[Unit]
+Description=Lock Me Out Daemon
+After=network.target
+
+[Service]
+ExecStart=/home/kalebtata/.local/bin/lmout run
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

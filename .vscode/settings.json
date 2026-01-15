@@ -1,0 +1,30 @@
+{
+    "workbench.colorTheme": "Catppuccin Mocha",
+    "python.languageServer": "Default",
+    "vim.leader": " ",
+    "vim.normalModeKeyBindingsNonRecursive": [
+        {
+            "before": [
+                "<leader>",
+                "e"
+            ],
+            "command": "workbench.view.explorer"
+        },
+        {
+            "before": [
+                "<leader>",
+                "s",
+                "f"
+            ],
+            "command": "workbench.action.quickOpen"
+        },
+        {
+            "before": [
+                "<leader>",
+                "t",
+                "t"
+            ],
+            "command": "workbench.action.terminal.toggleTerminal"
+        }
+    ]
+}
