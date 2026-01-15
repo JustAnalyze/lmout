@@ -7,5 +7,9 @@
     "icon_path": "/home/kalebtata/Projects/lock_me_out/src/lock_me_out/resources/icon.png",
     "notify_lead_minutes": 3,
     "notify_summary": "Heads Up!",
-    "notify_body": "A scheduled lockout will start at {start_time}."
+    "notify_body": "A scheduled lockout will start at {start_time}.",
+    "blocked_apps": [
+        "nvim",
+        "antigravity"
+    ]
 }

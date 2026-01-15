@@ -9,8 +9,9 @@ echo "🚀 Starting Lock Me Out installation..."
 echo "📦 Installing lmout via uv tool install..."
 uv tool install --reinstall .
 
-# 2. Get the absolute path of the installed binary
-LMOUT_PATH=$(which lmout)
+# 2. Get the absolute path of the installed binary, ignoring the local directory
+echo "📍 Finding installed lmout path..."
+LMOUT_PATH=$(PATH=$(echo "$PATH" | tr ':' '\n' | grep -v "$(pwd)" | tr '\n' ':') which lmout)
 echo "📍 lmout installed at: $LMOUT_PATH"
 
 # 3. Create systemd user directory if it doesn't exist

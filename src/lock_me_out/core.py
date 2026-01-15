@@ -83,6 +83,8 @@ class LockOutManager:
         self._running = False
         self._state = "IDLE"  # IDLE, WAITING, LOCKED
         self._target_end_time = 0.0
+        self.blocked_apps: list[str] = []
+        self.block_only: bool = False
 
     def get_status(self):
         """Returns the current status of the manager."""
@@ -92,15 +94,19 @@ class LockOutManager:
 
         return {"state": self._state, "time_remaining": remaining}
 
-    def start(self):
+    def start(self, blocked_apps: list[str] | None = None, block_only: bool = False):
         """Starts the lockout process in a background thread."""
         if self._running:
             logger.warning("LockOutManager is already running.")
             return
 
+        self.blocked_apps = blocked_apps or []
+        self.block_only = block_only
+
         logger.info(
             f"Starting LockOutManager: Delay={self.initial_delay_seconds}s, "
-            f"Duration={self.lockout_duration_seconds}s"
+            f"Duration={self.lockout_duration_seconds}s, "
+            f"BlockOnly={self.block_only}, Apps={self.blocked_apps}"
         )
         self._stop_event.clear()
         self._running = True
@@ -161,12 +167,6 @@ class LockOutManager:
     def _perform_lockout(self):
         """Executes the lockout phase."""
         logger.info("Initial delay complete. Initiating lockout.")
-
-        # Kill processes
-        self._kill_process("shortwave", "Shortwave")
-        self._kill_process("amberol", "Amberol")
-
-        logger.info("Initial delay complete. Initiating lockout.")
         self._state = "LOCKED"
 
         start_time = time.time()
@@ -177,15 +177,20 @@ class LockOutManager:
             if self._stop_event.is_set():
                 return
 
-            # Check and lock screen
-            if not self._is_screen_locked():
-                self._lock_screen()
+            # Kill specific blocked apps
+            for app_name in self.blocked_apps:
+                self._kill_process(app_name, app_name)
+
+            # Check and lock screen (if not block-only)
+            if not self.block_only:
+                if not self._is_screen_locked():
+                    self._lock_screen()
 
             time.sleep(2)
 
         if not self._stop_event.is_set():
             logger.info("Lockout duration finished.")
-            self._send_notification("Screen lockout has ended", "NOW MAKE IT HAPPEN!")
+            self._send_notification("Lockout Finished", "You can now resume your work.")
 
     def _kill_process(self, process_name: str, display_name: str):
         """Kills a process by name if it's running."""
@@ -201,8 +206,7 @@ class LockOutManager:
 
         if killed:
             self._send_notification(
-                f"Closing {display_name}",
-                f"{display_name} will be closed to allow Suspension.",
+                f"Blocked {display_name}", "App closed per schedule."
             )
 
     def _send_notification(self, summary: str, body: str):
@@ -262,6 +266,8 @@ class LockSchedule(BaseModel):
     description: str | None = None
     persist: bool = False
     notified_5m: bool = False  # Track if we already sent the 5-minute warning
+    blocked_apps: list[str] = Field(default_factory=list)
+    block_only: bool = False
 
 
 class ScheduleManager:
@@ -307,7 +313,9 @@ class ScheduleManager:
             settings.data_dir.mkdir(parents=True, exist_ok=True)
             with open(self.schedules_file, "w") as f:
                 json.dump(
-                    [s.model_dump(mode="json") for s in self.schedules], f, indent=4
+                    [s.model_dump(mode="json") for s in self.schedules],
+                    f,
+                    indent=4,
                 )
         except Exception as e:
             logger.error(f"Failed to save schedules: {e}")
@@ -318,12 +326,16 @@ class ScheduleManager:
         end_time: str,
         description: str = "",
         persist: bool = False,
+        blocked_apps: list[str] | None = None,
+        block_only: bool = False,
     ) -> LockSchedule:
         schedule = LockSchedule(
             start_time=start_time,
             end_time=end_time,
             description=description,
             persist=persist,
+            blocked_apps=blocked_apps or [],
+            block_only=block_only,
         )
         self.schedules.append(schedule)
         self.save_schedules()

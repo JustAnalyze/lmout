@@ -1,1 +1,15 @@
-[]
+[
+    {
+        "id": "223a3540-cc35-448a-8601-3db496d7fa95",
+        "start_time": "5:05am",
+        "end_time": "5:06am",
+        "enabled": true,
+        "description": "Focus",
+        "persist": false,
+        "notified_5m": false,
+        "blocked_apps": [
+            "antigravity"
+        ],
+        "block_only": true
+    }
+]

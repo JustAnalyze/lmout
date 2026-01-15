@@ -724,3 +724,45 @@
 2026-01-16 04:28:58 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
 2026-01-16 04:29:03 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
 2026-01-16 04:30:35 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
+2026-01-16 04:54:25 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
+2026-01-16 04:54:25 | INFO     | Starting LockOutManager: Delay=0s, Duration=60s, BlockOnly=True, Apps=['sleep']
+2026-01-16 04:54:25 | INFO     | Waiting for initial delay...
+2026-01-16 04:54:25 | INFO     | Initial delay complete. Initiating lockout.
+2026-01-16 04:54:25 | INFO     | Killing sleep (PID: 82382)
+2026-01-16 04:54:25 | INFO     | Killing sleep (PID: 82395)
+2026-01-16 04:55:26 | INFO     | Lockout duration finished.
+2026-01-16 04:57:22 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
+2026-01-16 04:57:32 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
+2026-01-16 04:58:12 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
+2026-01-16 04:58:50 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
+2026-01-16 04:58:53 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
+2026-01-16 05:00:47 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
+2026-01-16 05:01:15 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
+2026-01-16 05:02:42 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
+2026-01-16 05:02:47 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
+2026-01-16 05:04:19 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
+2026-01-16 05:04:23 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
+2026-01-16 05:04:33 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
+2026-01-16 05:04:33 | INFO     | Starting LockOutManager: Delay=26s, Duration=60s, BlockOnly=True, Apps=['antigravity']
+2026-01-16 05:04:33 | INFO     | Waiting for initial delay...
+2026-01-16 05:04:59 | INFO     | Initial delay complete. Initiating lockout.
+2026-01-16 05:04:59 | INFO     | Killing antigravity (PID: 73862)
+2026-01-16 05:04:59 | INFO     | Killing antigravity (PID: 73865)
+2026-01-16 05:04:59 | INFO     | Killing antigravity (PID: 73866)
+2026-01-16 05:04:59 | INFO     | Killing antigravity (PID: 73868)
+2026-01-16 05:04:59 | INFO     | Killing antigravity (PID: 73946)
+2026-01-16 05:04:59 | INFO     | Killing antigravity (PID: 73956)
+2026-01-16 05:04:59 | INFO     | Killing antigravity (PID: 73986)
+2026-01-16 05:04:59 | INFO     | Killing antigravity (PID: 73996)
+2026-01-16 05:04:59 | INFO     | Killing antigravity (PID: 74007)
+2026-01-16 05:04:59 | INFO     | Killing antigravity (PID: 74017)
+2026-01-16 05:04:59 | INFO     | Killing antigravity (PID: 74018)
+2026-01-16 05:04:59 | INFO     | Killing antigravity (PID: 74058)
+2026-01-16 05:04:59 | INFO     | Killing antigravity (PID: 74592)
+2026-01-16 05:04:59 | INFO     | Killing antigravity (PID: 74901)
+2026-01-16 05:04:59 | INFO     | Killing antigravity (PID: 75034)
+2026-01-16 05:04:59 | INFO     | Killing antigravity (PID: 75599)
+2026-01-16 05:50:13 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
+2026-01-16 05:52:43 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
+2026-01-16 05:52:58 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
+2026-01-16 06:01:08 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log

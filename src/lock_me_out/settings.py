@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     notify_summary: str = "Lockout in {minutes} minutes"
     notify_body: str = "A scheduled lockout will start at {start_time}."
 
+    # App Blocking
+    blocked_apps: list[str] = ["antigravity", "nvim"]
+
     # Settings from .env take priority
     model_config = SettingsConfigDict(
         env_file=".env",

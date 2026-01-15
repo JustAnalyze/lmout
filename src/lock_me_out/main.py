@@ -12,6 +12,18 @@ app = typer.Typer(help="Lock Me Out - CLI Schedule Manager")
 console = Console()
 
 
+def process_apps_list(apps: list[str] | None) -> list[str]:
+    """Processes a list of strings potentially containing commas into a clean list of app names."""
+    if not apps:
+        return []
+    processed = []
+    for a in apps:
+        # Split by comma and strip whitespace
+        parts = [x.strip() for x in a.split(",") if x.strip()]
+        processed.extend(parts)
+    return processed
+
+
 @app.command()
 def add(
     start_time: str = typer.Argument(..., help="Start time (e.g. 8pm, 20:00)"),
@@ -22,19 +34,36 @@ def add(
     persist: bool = typer.Option(
         False, "--persist", "-p", help="Keep schedule after it finishes"
     ),
+    apps: list[str] | None = typer.Option(
+        None, "--apps", "-a", help="Specific apps to block (comma separated names)"
+    ),
+    block_only: bool = typer.Option(
+        False, "--block-only", help="Block apps without locking the screen"
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging"),
 ) -> None:
     """
     Add a new scheduled lockout.
     """
+    from lock_me_out.settings import settings
+
     setup_logging(verbose=verbose)
     sm = ScheduleManager()
+
+    # Use defaults if not provided
+    processed_apps = process_apps_list(apps)
+    blocked_apps = processed_apps if processed_apps else settings.blocked_apps
 
     try:
         # Validate format
         calculate_from_range(start_time, end_time)
         sched = sm.add_schedule(
-            start_time, end_time, description or "", persist=persist
+            start_time,
+            end_time,
+            description or "",
+            persist=persist,
+            blocked_apps=blocked_apps,
+            block_only=block_only,
         )
         console.print(
             f"[green]Successfully added schedule:[/green] "
@@ -51,19 +80,35 @@ def start(
     duration: int = typer.Option(
         10, "--duration", "-l", help="Lockout duration in minutes"
     ),
+    apps: list[str] | None = typer.Option(
+        None, "--apps", "-a", help="Specific apps to block"
+    ),
+    block_only: bool = typer.Option(
+        False, "--block-only", help="Block apps without locking the screen"
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging"),
 ) -> None:
     """
     Start an instant lockout session.
     """
+    from lock_me_out.settings import settings
+
     setup_logging(verbose=verbose)
+    # Use defaults if not provided
+    processed_apps = process_apps_list(apps)
+    blocked_apps = processed_apps if processed_apps else settings.blocked_apps
+
     # Convert minutes to seconds
     manager = LockOutManager(delay * 60, duration * 60)
+    mode_text = "App Blocking" if block_only else "Full Lockout"
     console.print(
-        f"[bold green]Starting instant lockout...[/bold green] "
+        f"[bold green]Starting instant {mode_text}...[/bold green] "
         f"Delay: {delay}m, Duration: {duration}m"
     )
-    manager.start()
+    if blocked_apps:
+        console.print(f"Blocking apps: [magenta]{', '.join(blocked_apps)}[/magenta]")
+
+    manager.start(blocked_apps=blocked_apps, block_only=block_only)
 
     try:
         while manager._running:
@@ -162,10 +207,13 @@ def config(
     body: str | None = typer.Option(
         None, "--body", "-b", help="Notification body (use {start_time})"
     ),
+    apps: list[str] | None = typer.Option(
+        None, "--apps", "-a", help="Default apps to block (comma separated)"
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging"),
 ) -> None:
     """
-    Configure notification settings.
+    Configure notification and app blocking settings.
     """
     from lock_me_out.settings import load_settings
 
@@ -180,6 +228,8 @@ def config(
         current_settings.notify_summary = summary
     if body is not None:
         current_settings.notify_body = body
+    if apps:
+        current_settings.blocked_apps = process_apps_list(apps)
 
     current_settings.save()
 
@@ -189,6 +239,7 @@ def config(
     table.add_row("Lead Minutes", str(current_settings.notify_lead_minutes))
     table.add_row("Summary Template", current_settings.notify_summary)
     table.add_row("Body Template", current_settings.notify_body)
+    table.add_row("Default Blocked Apps", ", ".join(current_settings.blocked_apps))
     console.print(table)
     console.print("[green]Configuration saved![/green]")
 
@@ -279,9 +330,15 @@ def status(
         console.print(f"Daemon PID: [magenta]{daemon_pid}[/magenta]")
 
     if active_lockout:
-        console.print("\n[bold yellow]⚠️ ACTIVE LOCKOUT[/bold yellow]")
+        mode = (
+            "App Blocking Only" if active_lockout.get("block_only") else "Full Lockout"
+        )
+        console.print(f"\n[bold yellow]⚠️ ACTIVE SESSION ({mode})[/bold yellow]")
         console.print(f"Duration: {active_lockout.get('duration_mins')}m")
         console.print(f"Started at: {active_lockout.get('start_time')}")
+        apps = active_lockout.get("blocked_apps")
+        if apps:
+            console.print(f"Blocking: [magenta]{', '.join(apps)}[/magenta]")
     else:
         console.print("\nNo lockout currently active.")
 
@@ -314,7 +371,7 @@ def run(
         try:
             settings.data_dir.mkdir(parents=True, exist_ok=True)
             with open(settings.state_file, "w") as f:
-                json.dump(state, f)
+                json.dump(state, f, indent=4)
         except Exception:
             pass
 
@@ -343,6 +400,8 @@ def run(
                 active_info = {
                     "duration_mins": current_manager.lockout_duration_seconds // 60,
                     "start_time": datetime.now().strftime("%I:%M%p"),  # Rough
+                    "block_only": current_manager.block_only,
+                    "blocked_apps": current_manager.blocked_apps,
                 }
             write_state(active_info)
             # Reload schedules and settings in case they were modified externally
@@ -410,7 +469,9 @@ def run(
 
                     current_manager = LockOutManager(delay_secs, duration_secs)
                     active_sched_id = str(sched.id)
-                    current_manager.start()
+                    current_manager.start(
+                        blocked_apps=sched.blocked_apps, block_only=sched.block_only
+                    )
 
             time.sleep(30)
     finally:
