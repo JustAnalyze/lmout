@@ -766,3 +766,30 @@
 2026-01-16 05:52:43 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
 2026-01-16 05:52:58 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
 2026-01-16 06:01:08 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
+2026-01-16 06:54:12 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
+2026-01-16 06:54:13 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
+2026-01-16 07:15:24 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
+2026-01-16 07:15:25 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
+2026-01-16 07:20:58 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
+2026-01-16 19:21:58 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
+2026-01-16 19:22:01 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
+2026-01-16 19:22:43 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
+2026-01-16 19:23:00 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
+2026-01-16 19:23:09 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
+2026-01-16 19:23:15 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
+2026-01-16 19:23:40 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
+2026-01-16 19:23:40 | INFO     | Starting LockOutManager: Delay=319s, Duration=60s, BlockOnly=True, Apps=['antigravity', 'nvim']
+2026-01-16 19:23:40 | INFO     | Sending notification: Lockout in 5 minutes | A scheduled lockout will start at 7:29pm.
+2026-01-16 19:23:40 | INFO     | Waiting for initial delay...
+2026-01-16 19:23:47 | INFO     | Stopping LockOutManager...
+2026-01-16 19:23:48 | INFO     | LockOutManager stopped.
+2026-01-16 19:23:55 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
+2026-01-16 19:24:17 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
+2026-01-16 19:24:23 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
+2026-01-16 19:26:53 | INFO     | Starting LockOutManager: Delay=306s, Duration=60s, BlockOnly=True, Apps=['antigravity', 'nvim']
+2026-01-16 19:26:53 | INFO     | Sending notification: Lockout in 5 minutes | A scheduled lockout will start at 7:32pm.
+2026-01-16 19:26:53 | INFO     | Waiting for initial delay...
+2026-01-16 19:27:02 | INFO     | Stopping LockOutManager...
+2026-01-16 19:27:02 | INFO     | LockOutManager stopped.
+2026-01-16 19:27:07 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log
+2026-01-16 19:27:11 | DEBUG    | Logging initialized. Logs saved to: /home/kalebtata/Projects/lock_me_out/outputs/app.log

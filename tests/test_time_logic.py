@@ -1,6 +1,6 @@
 import pytest
 from datetime import datetime, time, timedelta
-from lock_me_out.core import calculate_from_range, parse_time_string
+from lock_me_out.utils.time import calculate_from_range, parse_time_string
 
 
 def test_parse_time_string():

@@ -2,7 +2,8 @@ import pytest
 import json
 from pathlib import Path
 from uuid import UUID
-from lock_me_out.core import ScheduleManager, LockSchedule
+from lock_me_out.manager import ScheduleManager
+from lock_me_out.schema import LockSchedule
 from lock_me_out.settings import settings
 
 
