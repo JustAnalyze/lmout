@@ -56,6 +56,7 @@ class LockOutManager:
         )
         self._stop_event.clear()
         self._running = True
+        self._state = "WAITING"
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 

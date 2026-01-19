@@ -7,7 +7,6 @@
     "notify_summary": "Lockout in {minutes} minutes",
     "notify_body": "A scheduled lockout will start at {start_time}.",
     "blocked_apps": [
-        "antigravity",
         "nvim"
     ]
 }

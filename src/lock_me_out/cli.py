@@ -10,6 +10,8 @@ from lock_me_out.utils.logging import setup_logging
 from lock_me_out.manager import LockOutManager, ScheduleManager
 from lock_me_out.settings import load_settings, settings
 from lock_me_out.utils.time import calculate_from_range
+from lock_me_out.utils.state import write_state, cleanup_state
+from datetime import datetime
 
 app = typer.Typer(help="Lock Me Out - CLI Schedule Manager")
 console = Console()
@@ -101,11 +103,26 @@ def start(
     manager.start(blocked_apps=blocked_apps, block_only=block_only)
 
     try:
-        while manager.get_status()["state"] != "IDLE":
+        while True:
+            status = manager.get_status()
+            if status["state"] == "IDLE":
+                break
+
+            # Update state file so 'lmout status' can see us
+            active_info = {
+                "duration_mins": duration,
+                "start_time": datetime.now().strftime("%I:%M%p"),
+                "block_only": block_only,
+                "blocked_apps": blocked_apps,
+                "remaining_secs": status["time_remaining"],
+            }
+            write_state(active_info)
             time.sleep(1)
     except KeyboardInterrupt:
         manager.stop()
         console.print("\n[yellow]Lockout stopped manually.[/yellow]")
+    finally:
+        cleanup_state()
 
 
 @app.command(name="list")

@@ -24,21 +24,51 @@ def kill_process(process_name: str, display_name: str | None = None):
 
 
 def is_screen_locked() -> bool:
-    """Checks if the screen is locked using xdg-screensaver."""
+    """Checks if the screen is locked using multiple methods."""
+    # Method 1: xdg-screensaver
     try:
         result = subprocess.run(
-            ["xdg-screensaver", "status"], capture_output=True, text=True
+            ["xdg-screensaver", "status"], capture_output=True, text=True, timeout=2
         )
-        return "is locked" in result.stdout
-    except FileNotFoundError:
-        logger.warning("xdg-screensaver not found.")
-        return False
+        if "is locked" in result.stdout:
+            return True
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+    # Method 2: loginctl
+    try:
+        result = subprocess.run(
+            ["loginctl", "show-session", "self", "-p", "LockedHint", "--value"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        if result.stdout.strip() == "yes":
+            return True
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+    return False
 
 
 def lock_screen():
-    """Locks the screen using xdg-screensaver."""
-    logger.debug("Locking screen...")
+    """Locks the screen using multiple methods."""
+    logger.debug("Attempting to lock screen...")
+
+    # Method 1: loginctl (Modern systemd way)
+    try:
+        subprocess.run(["loginctl", "lock-session"], check=False)
+    except FileNotFoundError:
+        pass
+
+    # Method 2: xdg-screensaver
     try:
         subprocess.run(["xdg-screensaver", "lock"], check=False)
     except FileNotFoundError:
-        logger.warning("xdg-screensaver not found.")
+        pass
+
+    # Method 3: gnome-screensaver-command (Specific for GNOME/older systems)
+    try:
+        subprocess.run(["gnome-screensaver-command", "-l"], check=False)
+    except FileNotFoundError:
+        pass

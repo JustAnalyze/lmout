@@ -1,38 +1,13 @@
-import json
-import os
 import time
 from datetime import datetime
 
 from rich.console import Console
 
 from lock_me_out.manager import LockOutManager, ScheduleManager
-from lock_me_out.settings import load_settings, settings
+from lock_me_out.settings import load_settings
+from lock_me_out.utils.state import write_state, cleanup_state
 
 console = Console()
-
-
-def write_state(active_info=None):
-    """Writes the current daemon state to a file for 'status' command."""
-    state = {
-        "pid": os.getpid(),
-        "last_update": datetime.now().isoformat(),
-        "active_lockout": active_info,
-    }
-    try:
-        settings.data_dir.mkdir(parents=True, exist_ok=True)
-        with open(settings.state_file, "w") as f:
-            json.dump(state, f, indent=4)
-    except Exception:
-        pass
-
-
-def cleanup_state():
-    """Removes the state file when the daemon stops."""
-    if settings.state_file.exists():
-        try:
-            settings.state_file.unlink()
-        except Exception:
-            pass
 
 
 def run_daemon():
