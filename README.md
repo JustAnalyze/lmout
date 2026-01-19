@@ -20,8 +20,8 @@ Lock Me Out is a robust CLI tool designed for Linux users who need a little help
 The easiest way to install `lmout` and set up the background daemon is using the provided script:
 
 ```bash
-git clone https://github.com/your-username/lock_me_out.git
-cd lock_me_out
+git clone https://github.com/JustAnalyze/lmout.git
+cd lmout
 ./install.sh
 ```
 
