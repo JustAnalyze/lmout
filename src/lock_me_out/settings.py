@@ -57,19 +57,36 @@ class Settings(BaseSettings):
             json.dump(data, f, indent=4)
 
 
+
+_last_settings_mtime: float | None = None
+_cached_settings: Settings | None = None
+
+
 def load_settings() -> Settings:
     """Loads settings, merging with config.json if it exists."""
+    global _last_settings_mtime, _cached_settings
+
     initial = Settings()
     config_path = initial.data_dir / "config.json"
 
-    if config_path.exists():
-        try:
-            with open(config_path) as f:
-                config_data = json.load(f)
-            return Settings(**config_data)
-        except Exception:
-            return initial
-    return initial
+    if not config_path.exists():
+        _last_settings_mtime = None
+        _cached_settings = initial
+        return initial
+
+    current_mtime = config_path.stat().st_mtime
+    if _last_settings_mtime == current_mtime and _cached_settings is not None:
+        return _cached_settings
+
+    try:
+        with open(config_path) as f:
+            config_data = json.load(f)
+        _cached_settings = Settings(**initial.model_dump(), **config_data)
+        _last_settings_mtime = current_mtime
+        return _cached_settings
+    except Exception:
+        _cached_settings = initial
+        return initial
 
 
 # The single source of truth for the app

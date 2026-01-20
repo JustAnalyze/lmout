@@ -7,7 +7,7 @@ from loguru import logger
 from lock_me_out.schema import LockSchedule
 from lock_me_out.settings import settings
 from lock_me_out.utils.notifications import send_notification
-from lock_me_out.utils.processes import is_screen_locked, kill_process, lock_screen
+from lock_me_out.utils.processes import is_screen_locked, kill_processes, lock_screen
 from lock_me_out.utils.time import calculate_from_range
 
 
@@ -99,19 +99,24 @@ class LockOutManager:
         self._target_end_time = time.time() + self.initial_delay_seconds
         end_time = self._target_end_time
 
-        while time.time() < end_time:
-            if self._stop_event.is_set():
-                return
+        notified_one_minute = False
 
+        while time.time() < end_time:
             remaining = end_time - time.time()
 
-            # Warning at 1 minute
-            if 60 <= remaining < 61:
+            if 60 <= remaining < 61 and not notified_one_minute:
                 send_notification(
                     "1 minute remaining before lockout.", "MAKE SURE TO REST!"
                 )
+                notified_one_minute = True
 
-            time.sleep(1)
+            # Sleep for remaining time or a maximum of 5 seconds to re-check
+            sleep_duration = min(remaining, 5.0)
+            if sleep_duration <= 0:
+                break
+
+            if self._stop_event.wait(timeout=sleep_duration):
+                return # Stop event was set, exit early
 
     def _perform_lockout(self):
         """Executes the lockout phase (app blocking and screen locking)."""
@@ -126,15 +131,17 @@ class LockOutManager:
                 return
 
             # Kill specific blocked apps
-            for app_name in self.blocked_apps:
-                kill_process(app_name)
+            if self.blocked_apps:
+                kill_processes(self.blocked_apps)
 
             # Check and lock screen (if not block-only)
             if not self.block_only:
                 if not is_screen_locked():
                     lock_screen()
 
-            time.sleep(2)
+            # Wait for 2 seconds or until stop event is set
+            if self._stop_event.wait(timeout=2):
+                return # Stop event was set, exit early
 
         if not self._stop_event.is_set():
             logger.info("Lockout duration finished.")
@@ -147,16 +154,25 @@ class ScheduleManager:
     def __init__(self):
         self.schedules_file = settings.data_dir / "schedules.json"
         self.schedules: list[LockSchedule] = []
+        self._last_schedules_mtime: float | None = None
         self._load_schedules()
 
     def _load_schedules(self):
         if not self.schedules_file.exists():
+            self._last_schedules_mtime = None
+            self.schedules = []
+            return
+
+        current_mtime = self.schedules_file.stat().st_mtime
+        if self._last_schedules_mtime == current_mtime:
+            # File hasn't changed, no need to reload
             return
 
         try:
             with open(self.schedules_file) as f:
                 data = json.load(f)
                 self.schedules = [LockSchedule(**s) for s in data]
+            self._last_schedules_mtime = current_mtime
         except Exception as e:
             logger.error(f"Failed to load schedules: {e}")
 
