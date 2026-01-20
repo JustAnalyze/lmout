@@ -92,8 +92,8 @@ def add(
         raise typer.Exit(1) from None
 
 
-@app.command()
-def start(
+@app.command(name="instant")
+def instant(
     delay: int = typer.Option(30, "--delay", "-d", help="Initial delay in minutes"),
     duration: int = typer.Option(
         10, "--duration", "-l", help="Lockout duration in minutes"
@@ -111,7 +111,7 @@ def start(
 
     if not is_daemon_running():
         console.print(
-            "[red]Error:[/red] Daemon is not running. Please start it with `lmout run`."
+            "[red]Error:[/red] Daemon is not running. Please start it with `lmout start`."
         )
         raise typer.Exit(1)
 
@@ -400,12 +400,12 @@ def status(
 
     if not is_active and not daemon_pid:
         console.print(
-            "\n[dim]To start the daemon, run: [bold]lmout run[/bold] or use systemd.[/dim]"
+            "\n[dim]To start the daemon, run: [bold]lmout start[/bold] or use systemd.[/dim]"
         )
 
 
 @app.command()
-def run(
+def start(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging"),
     daemonize: bool = typer.Option(
         False,

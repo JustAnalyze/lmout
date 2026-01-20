@@ -7,7 +7,11 @@ from loguru import logger
 from lock_me_out.schema import LockSchedule
 from lock_me_out.settings import settings
 from lock_me_out.utils.notifications import send_notification
-from lock_me_out.utils.processes import is_screen_locked, kill_processes, lock_screen
+from lock_me_out.utils.processes import (
+    is_screen_locked,
+    kill_processes,
+    lock_screen,
+)
 from lock_me_out.utils.time import calculate_from_range
 
 
@@ -116,7 +120,7 @@ class LockOutManager:
                 break
 
             if self._stop_event.wait(timeout=sleep_duration):
-                return # Stop event was set, exit early
+                return  # Stop event was set, exit early
 
     def _perform_lockout(self):
         """Executes the lockout phase (app blocking and screen locking)."""
@@ -141,7 +145,7 @@ class LockOutManager:
 
             # Wait for 2 seconds or until stop event is set
             if self._stop_event.wait(timeout=2):
-                return # Stop event was set, exit early
+                return  # Stop event was set, exit early
 
         if not self._stop_event.is_set():
             logger.info("Lockout duration finished.")
