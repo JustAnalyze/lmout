@@ -1,6 +1,9 @@
 import os
+import sys
 import subprocess
 import time
+import json
+from datetime import datetime, timedelta
 
 import typer
 from rich.console import Console
@@ -11,10 +14,26 @@ from lock_me_out.manager import LockOutManager, ScheduleManager
 from lock_me_out.settings import load_settings, settings
 from lock_me_out.utils.time import calculate_from_range
 from lock_me_out.utils.state import write_state, cleanup_state
-from datetime import datetime
+
 
 app = typer.Typer(help="Lock Me Out - CLI Schedule Manager")
 console = Console()
+
+
+def is_daemon_running() -> bool:
+    """Checks if the daemon is running via state file and PID."""
+    if not settings.state_file.exists():
+        return False
+    try:
+        with open(settings.state_file) as f:
+            state = json.load(f)
+            pid = state.get("pid")
+            if not pid:
+                return False
+            os.kill(pid, 0)  # Check if process exists
+            return True
+    except (OSError, json.JSONDecodeError, FileNotFoundError):
+        return False
 
 
 def process_apps_list(apps: list[str] | None) -> list[str]:
@@ -86,74 +105,66 @@ def start(
     ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging"),
 ) -> None:
-    """Start an instant lockout session."""
+    """Start an instant lockout session via the running daemon."""
     setup_logging(verbose=verbose)
+
+    if not is_daemon_running():
+        console.print(
+            "[red]Error:[/red] Daemon is not running. Please start it with `lmout run`."
+        )
+        raise typer.Exit(1)
+
+    if settings.command_file.exists():
+        # This is a simple guard. A more robust implementation might check
+        # the timestamp of the file and consider it stale after a while.
+        console.print(
+            "[yellow]Warning:[/yellow] Another command is already pending. "
+            "Please wait a moment before trying again."
+        )
+        raise typer.Exit(1)
+
     processed_apps = process_apps_list(apps)
     blocked_apps = processed_apps if processed_apps else settings.blocked_apps
 
-    manager = LockOutManager(delay * 60, duration * 60)
+    command = {
+        "command": "start_instant",
+        "delay_mins": delay,
+        "duration_mins": duration,
+        "blocked_apps": blocked_apps,
+        "block_only": block_only,
+    }
+
+    try:
+        # This is an atomic operation on most OSes.
+        with open(settings.command_file, "w") as f:
+            json.dump(command, f)
+    except IOError as e:
+        console.print(f"[red]Error:[/red] Could not send command to daemon: {e}")
+        raise typer.Exit(1)
+
     mode_text = "App Blocking" if block_only else "Full Lockout"
     console.print(
-        f"[bold green]Starting instant {mode_text}...[/bold green] "
+        f"[bold green]Requesting instant {mode_text}...[/bold green] "
         f"Delay: {delay}m, Duration: {duration}m"
     )
     if blocked_apps:
         console.print(f"Blocking apps: [magenta]{', '.join(blocked_apps)}[/magenta]")
-
-    manager.start(blocked_apps=blocked_apps, block_only=block_only)
-
-    try:
-        while True:
-            status = manager.get_status()
-            if status["state"] == "IDLE":
-                break
-
-            # Update state file so 'lmout status' can see us
-            active_info = {
-                "duration_mins": duration,
-                "start_time": datetime.now().strftime("%I:%M%p"),
-                "block_only": block_only,
-                "blocked_apps": blocked_apps,
-                "remaining_secs": status["time_remaining"],
-            }
-            write_state(active_info)
-            time.sleep(1)
-    except KeyboardInterrupt:
-        manager.stop()
-        console.print("\n[yellow]Lockout stopped manually.[/yellow]")
-    finally:
-        cleanup_state()
 
 
 @app.command(name="list")
 def list_schedules(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging"),
 ) -> None:
-    """List all scheduled lockouts, sorted by soonest first."""
+    """List all scheduled and active instant lockouts."""
     setup_logging(verbose=verbose)
     sm = ScheduleManager()
     schedules_with_info = sm.check_schedules()
+    all_rows = []
 
-    if not schedules_with_info:
-        console.print("[yellow]No active schedules found.[/yellow]")
-        return
-
-    table = Table(title="Scheduled Lockouts (Soonest First)")
-    table.add_column("#", justify="right", style="cyan", no_wrap=True)
-    table.add_column("Start", style="magenta")
-    table.add_column("End", style="magenta")
-    table.add_column("In (approx)", style="green")
-    table.add_column("Duration (m)", style="blue")
-    table.add_column("Mode", style="yellow")
-    table.add_column("Blocked Apps", style="magenta")
-    table.add_column("Persist", style="yellow")
-    table.add_column("Description", style="white")
-
+    # 1. Process scheduled lockouts
     for i, (sched, delay_secs, duration_secs) in enumerate(schedules_with_info, 1):
-        if delay_secs == 0:
-            in_text = "NOW"
-        elif delay_secs < 60:
-            in_text = f"{delay_secs}s"
+        if delay_secs < 60:
+            in_text = f"{delay_secs}s" if delay_secs > 0 else "NOW"
         elif delay_secs < 3600:
             in_text = f"{delay_secs // 60}m"
         else:
@@ -161,18 +172,75 @@ def list_schedules(
 
         mode = "Apps Only" if sched.block_only else "Full Lock"
         blocked_apps = ", ".join(sched.blocked_apps) if sched.blocked_apps else "None"
-
-        table.add_row(
-            str(i),
-            sched.start_time,
-            sched.end_time,
-            in_text,
-            str(duration_secs // 60),
-            mode,
-            blocked_apps,
-            "Yes" if sched.persist else "No",
-            sched.description or "",
+        all_rows.append(
+            (
+                delay_secs,
+                str(i),
+                sched.start_time,
+                sched.end_time,
+                in_text,
+                str(duration_secs // 60),
+                mode,
+                blocked_apps,
+                "Yes" if sched.persist else "No",
+                sched.description or "Scheduled",
+            )
         )
+
+    # 2. Check for an active instant lockout from the state file
+    active_lockout = None
+    if settings.state_file.exists():
+        try:
+            with open(settings.state_file) as f:
+                state = json.load(f)
+                lockout_info = state.get("active_lockout")
+                if lockout_info and lockout_info.get("source") == "instant":
+                    active_lockout = lockout_info
+        except (json.JSONDecodeError, FileNotFoundError):
+            pass
+
+    if active_lockout:
+        rem_secs = active_lockout.get("remaining_secs", 0)
+        in_text = f"Ends in {rem_secs // 60}m" if rem_secs > 60 else f"Ends in {rem_secs}s"
+        mode = "Apps Only" if active_lockout.get("block_only") else "Full Lock"
+        apps = active_lockout.get("blocked_apps", [])
+        blocked_apps_str = ", ".join(apps) if apps else "None"
+        all_rows.append(
+            (
+                -1,  # Sorts to the top
+                "⚡",  # Indicator for instant
+                active_lockout.get("start_time", "Now"),
+                "...",
+                in_text,
+                str(active_lockout.get("duration_mins", 0)),
+                mode,
+                blocked_apps_str,
+                "No",
+                "Instant Lockout",
+            )
+        )
+
+    # 3. Sort and render table
+    all_rows.sort(key=lambda x: x[0])
+
+    if not all_rows:
+        console.print("[yellow]No scheduled or active lockouts found.[/yellow]")
+        return
+
+    table = Table(title="Active & Scheduled Lockouts")
+    table.add_column("#", justify="right", style="cyan", no_wrap=True)
+    table.add_column("Start", style="magenta")
+    table.add_column("End", style="magenta")
+    table.add_column("Status", style="green")
+    table.add_column("Duration (m)", style="blue")
+    table.add_column("Mode", style="yellow")
+    table.add_column("Blocked Apps", style="magenta")
+    table.add_column("Persist", style="yellow")
+    table.add_column("Description", style="white")
+
+    for row in all_rows:
+        # Pass the tuple of strings, minus the sort key
+        table.add_row(*row[1:])
 
     console.print(table)
 
@@ -338,9 +406,59 @@ def status(
 @app.command()
 def run(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging"),
+    daemonize: bool = typer.Option(
+        False, "--daemonize", hidden=True, help="Internal flag to run as a daemon."
+    ),
 ) -> None:
-    """Run the lockout daemon to enforce schedules."""
-    from lock_me_out.daemon import run_daemon
-
+    """Run the lockout daemon in the background."""
     setup_logging(verbose=verbose)
-    run_daemon()
+
+    if daemonize:
+        from lock_me_out.daemon import run_daemon
+
+        run_daemon()
+        return
+
+    if is_daemon_running():
+        console.print("[yellow]Daemon is already running.[/yellow]")
+        return
+
+    console.print("Starting daemon in the background...")
+
+    command = [sys.executable, "-m", "lock_me_out.main", "run", "--daemonize"]
+    if verbose:
+        command.append("--verbose")
+
+    try:
+        if os.name == "posix":
+            subprocess.Popen(
+                command,
+                start_new_session=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        elif os.name == "nt":
+            DETACHED_PROCESS = 0x00000008
+            subprocess.Popen(
+                command,
+                creationflags=DETACHED_PROCESS,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        else:
+            console.print(f"[red]Unsupported OS for daemonization: {os.name}[/red]")
+            raise typer.Exit(1)
+
+        console.print("Waiting for daemon to initialize...")
+        time.sleep(2)
+
+        if is_daemon_running():
+            console.print("[bold green]✔ Daemon started successfully.[/bold green]")
+        else:
+            console.print(
+                "[bold red]✖ Error:[/bold red] Failed to start daemon. "
+                "Check logs for details."
+            )
+    except Exception as e:
+        console.print(f"[red]An unexpected error occurred: {e}[/red]")
+        raise typer.Exit(1)

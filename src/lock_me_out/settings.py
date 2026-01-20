@@ -27,6 +27,10 @@ class Settings(BaseSettings):
         return self.data_dir / "state.json"
 
     @property
+    def command_file(self) -> Path:
+        return self.data_dir / "command.json"
+
+    @property
     def icon_path(self) -> str:
         return str(Path(__file__).resolve().parent / "resources" / "icon.png")
 
