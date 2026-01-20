@@ -188,15 +188,13 @@ def list_schedules(
             )
         )
 
-    # 2. Check for an active instant lockout from the state file
+    # 2. Check for an active lockout from the state file
     active_lockout = None
     if settings.state_file.exists():
         try:
             with open(settings.state_file) as f:
                 state = json.load(f)
-                lockout_info = state.get("active_lockout")
-                if lockout_info and lockout_info.get("source") == "instant":
-                    active_lockout = lockout_info
+                active_lockout = state.get("active_lockout")
         except (json.JSONDecodeError, FileNotFoundError):
             pass
 
@@ -206,10 +204,15 @@ def list_schedules(
         mode = "Apps Only" if active_lockout.get("block_only") else "Full Lock"
         apps = active_lockout.get("blocked_apps", [])
         blocked_apps_str = ", ".join(apps) if apps else "None"
+
+        is_instant = active_lockout.get("source") == "instant"
+        indicator = "⚡" if is_instant else "S"
+        description = "Instant Lockout" if is_instant else "Scheduled"
+
         all_rows.append(
             (
                 -1,  # Sorts to the top
-                "⚡",  # Indicator for instant
+                indicator,
                 active_lockout.get("start_time", "Now"),
                 "...",
                 in_text,
@@ -217,7 +220,7 @@ def list_schedules(
                 mode,
                 blocked_apps_str,
                 "No",
-                "Instant Lockout",
+                description,
             )
         )
 
