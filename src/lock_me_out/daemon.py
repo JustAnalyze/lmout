@@ -41,12 +41,15 @@ def _process_commands() -> tuple[LockOutManager | None, str | None, dict | None]
         blocked_apps = command_data.get("blocked_apps", [])
         block_only = command_data.get("block_only", False)
 
-        manager = LockOutManager(delay_mins * 60, duration_mins * 60)
+        manager = LockOutManager(
+            delay_mins * 60,
+            min(duration_mins, settings.MAX_LOCKOUT_MINUTES) * 60
+        )
         manager.start(blocked_apps=blocked_apps, block_only=block_only)
 
         # Data for state reporting
         instant_data = {
-            "duration_mins": duration_mins,
+            "duration_mins": min(duration_mins, settings.MAX_LOCKOUT_MINUTES),
             "start_time": (datetime.now() + timedelta(minutes=delay_mins)).strftime(
                 "%I:%M%p"
             ),
@@ -61,7 +64,8 @@ def _process_commands() -> tuple[LockOutManager | None, str | None, dict | None]
 def run_daemon():
     """Main loop for the lockout daemon."""
     sm = ScheduleManager()
-    console.print("[bold green]Lock Me Out daemon started...[/bold green]")
+    console.print(f"[bold green]Lock Me Out daemon started...[/bold green]")
+    console.print(f"Data directory: [cyan]{settings.data_dir}[/cyan]")
     console.print("Checking for schedules and commands. Press Ctrl+C to stop.")
 
     current_manager: LockOutManager | None = None
@@ -109,7 +113,7 @@ def run_daemon():
                     lead_secs = current_settings.notify_lead_minutes * 60
 
                     if candidates:
-                        sched, delay_secs, duration_secs = candidates[0]
+                        sched, delay_secs, duration_secs, total_secs = candidates[0]
                         if delay_secs < lead_secs + 30:
                             console.print(
                                 f"[bold yellow]Preparing scheduled lockout:[/bold yellow] "
@@ -121,7 +125,10 @@ def run_daemon():
                             body = current_settings.notify_body.format(
                                 start_time=sched.start_time
                             )
-                            current_manager = LockOutManager(delay_secs, duration_secs)
+                            current_manager = LockOutManager(
+                                delay_secs,
+                                min(duration_secs, settings.MAX_LOCKOUT_MINUTES * 60)
+                            )
                             active_sched_id = str(sched.id)
                             current_manager.start(
                                 blocked_apps=sched.blocked_apps,

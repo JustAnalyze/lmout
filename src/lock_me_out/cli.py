@@ -13,7 +13,7 @@ from rich.table import Table
 from lock_me_out.utils.logging import setup_logging
 from lock_me_out.manager import LockOutManager, ScheduleManager
 from lock_me_out.settings import load_settings, settings
-from lock_me_out.utils.time import calculate_from_range
+from lock_me_out.utils.time import calculate_from_range, format_duration_seconds
 from lock_me_out.utils.state import write_state, cleanup_state
 
 
@@ -74,7 +74,17 @@ def add(
     blocked_apps = processed_apps if processed_apps else settings.blocked_apps
 
     try:
-        calculate_from_range(start_time, end_time)
+        _, _, total_duration_secs = calculate_from_range(start_time, end_time)
+        total_duration_mins = total_duration_secs // 60
+
+        if total_duration_mins > settings.MAX_LOCKOUT_MINUTES:
+            console.print(
+                f"[red]Error:[/red] Scheduled lockout duration ({total_duration_mins}m) "
+                f"exceeds the maximum allowed ({settings.MAX_LOCKOUT_MINUTES}m). "
+                "This is a guardrail to prevent permanent lockouts."
+            )
+            raise typer.Exit(1)
+
         sched = sm.add_schedule(
             start_time,
             end_time,
@@ -116,11 +126,23 @@ def instant(
         raise typer.Exit(1)
 
     if settings.command_file.exists():
-        # This is a simple guard. A more robust implementation might check
-        # the timestamp of the file and consider it stale after a while.
+        # Check if the file is stale (older than 30 seconds)
+        mtime = settings.command_file.stat().st_mtime
+        if time.time() - mtime > 30:
+            console.print("[yellow]Found stale command file, removing...[/yellow]")
+            settings.command_file.unlink()
+        else:
+            console.print(
+                f"[yellow]Warning:[/yellow] Another command is already pending (at {settings.command_file}). "
+                "Please wait a moment before trying again."
+            )
+            raise typer.Exit(1)
+    
+    if duration > settings.MAX_LOCKOUT_MINUTES:
         console.print(
-            "[yellow]Warning:[/yellow] Another command is already pending. "
-            "Please wait a moment before trying again."
+            f"[red]Error:[/red] Instant lockout duration ({duration}m) "
+            f"exceeds the maximum allowed ({settings.MAX_LOCKOUT_MINUTES}m). "
+            "This is a guardrail to prevent permanent lockouts."
         )
         raise typer.Exit(1)
 
@@ -162,33 +184,7 @@ def list_schedules(
     schedules_with_info = sm.check_schedules()
     all_rows = []
 
-    # 1. Process scheduled lockouts
-    for i, (sched, delay_secs, duration_secs) in enumerate(schedules_with_info, 1):
-        if delay_secs < 60:
-            in_text = f"{delay_secs}s" if delay_secs > 0 else "NOW"
-        elif delay_secs < 3600:
-            in_text = f"{delay_secs // 60}m"
-        else:
-            in_text = f"{delay_secs // 3600}h {(delay_secs % 3600) // 60}m"
-
-        mode = "Apps Only" if sched.block_only else "Full Lock"
-        blocked_apps = ", ".join(sched.blocked_apps) if sched.blocked_apps else "None"
-        all_rows.append(
-            (
-                delay_secs,
-                str(i),
-                sched.start_time,
-                sched.end_time,
-                in_text,
-                str(duration_secs // 60),
-                mode,
-                blocked_apps,
-                "Yes" if sched.persist else "No",
-                sched.description or "Scheduled",
-            )
-        )
-
-    # 2. Check for an active lockout from the state file
+    # Check for an active lockout from the state file
     active_lockout = None
     if settings.state_file.exists():
         try:
@@ -198,7 +194,51 @@ def list_schedules(
         except (json.JSONDecodeError, FileNotFoundError):
             pass
 
-    if active_lockout:
+    active_sched_id = active_lockout.get("schedule_id") if active_lockout else None
+
+    # 1. Process scheduled lockouts
+    for i, (sched, delay_secs, duration_secs, total_secs) in enumerate(schedules_with_info, 1):
+        is_active = active_sched_id and str(sched.id) == str(active_sched_id)
+        
+        if is_active:
+            # This schedule is currently active, we'll combine info
+            rem_secs = active_lockout.get("remaining_secs", 0)
+            current_phase = active_lockout.get("current_phase")
+            if current_phase == "WAITING":
+                in_text = f"Starts in {rem_secs // 60}m" if rem_secs > 60 else f"Starts in {rem_secs}s"
+            else:
+                in_text = f"Ends in {rem_secs // 60}m" if rem_secs > 60 else f"Ends in {rem_secs}s"
+            
+            indicator = f"S{i}"
+        else:
+            if delay_secs < 60:
+                in_text = f"{delay_secs}s" if delay_secs > 0 else "NOW"
+            elif delay_secs < 3600:
+                in_text = f"{delay_secs // 60}m"
+            else:
+                in_text = f"{delay_secs // 3600}h {(delay_secs % 3600) // 60}m"
+            indicator = str(i)
+
+        mode = "Apps Only" if sched.block_only else "Full Lock"
+        blocked_apps = ", ".join(sched.blocked_apps) if sched.blocked_apps else "None"
+        
+        all_rows.append(
+            (
+                -1 if is_active else delay_secs,
+                indicator,
+                sched.start_time,
+                sched.end_time,
+                in_text,
+                format_duration_seconds(total_secs),
+                mode,
+                blocked_apps,
+                "Yes" if sched.persist else "No",
+                sched.description or "Scheduled",
+            )
+        )
+
+    # 2. Check for an active lockout that is NOT from a schedule (e.g. instant)
+    if active_lockout and not active_sched_id:
         rem_secs = active_lockout.get("remaining_secs", 0)
         current_phase = active_lockout.get("current_phase")
 
@@ -215,7 +255,8 @@ def list_schedules(
                 else f"Ends in {rem_secs}s"
             )
         else:
-            in_text = "N/A" # Should not happen if phase is always set
+            in_text = "N/A"
+        
         mode = "Apps Only" if active_lockout.get("block_only") else "Full Lock"
         apps = active_lockout.get("blocked_apps", [])
         blocked_apps_str = ", ".join(apps) if apps else "None"
@@ -226,12 +267,12 @@ def list_schedules(
 
         all_rows.append(
             (
-                -1,  # Sorts to the top
+                -2,  # Sorts to the very top
                 indicator,
                 active_lockout.get("start_time", "Now"),
-                "...",
+                active_lockout.get("end_time", "..."),
                 in_text,
-                str(active_lockout.get("duration_mins", 0)),
+                format_duration_seconds(active_lockout.get("duration_mins", 0) * 60),
                 mode,
                 blocked_apps_str,
                 "No",
@@ -258,7 +299,6 @@ def list_schedules(
     table.add_column("Description", style="white")
 
     for row in all_rows:
-        # Pass the tuple of strings, minus the sort key
         table.add_row(*row[1:])
 
     console.print(table)
@@ -266,8 +306,8 @@ def list_schedules(
 
 @app.command()
 def remove(
-    index: int = typer.Argument(
-        ..., help="Index of the schedule to remove (from lmout list)"
+    index: str = typer.Argument(
+        ..., help="Index of the schedule to remove (e.g. 1 or S1)"
     ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging"),
 ) -> None:
@@ -276,11 +316,22 @@ def remove(
     sm = ScheduleManager()
     schedules_with_info = sm.check_schedules()
 
-    if index < 1 or index > len(schedules_with_info):
-        console.print(f"[red]Error:[/red] Index {index} is out of range.")
+    # Handle S1, S2 style indices
+    idx_str = index.upper()
+    if idx_str.startswith("S"):
+        idx_str = idx_str[1:]
+    
+    try:
+        idx = int(idx_str)
+    except ValueError:
+        console.print(f"[red]Error:[/red] Invalid index format: {index}")
+        raise typer.Exit(1)
+
+    if idx < 1 or idx > len(schedules_with_info):
+        console.print(f"[red]Error:[/red] Index {idx} is out of range.")
         raise typer.Exit(1) from None
 
-    target_sched, _, _ = schedules_with_info[index - 1]
+    target_sched, _, _, _ = schedules_with_info[idx - 1]
     sm.remove_schedule(str(target_sched.id))
     console.print(
         f"[green]Removed schedule:[/green] {target_sched.start_time} - "
@@ -302,6 +353,9 @@ def config(
     apps: list[str] | None = typer.Option(
         None, "--apps", "-a", help="Default apps to block (comma separated)"
     ),
+    max_lockout_mins: int | None = typer.Option(
+        None, "--max-lockout", "-m", help="Maximum lockout duration in minutes (guardrail)"
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging"),
 ) -> None:
     """Configure notification and app blocking settings."""
@@ -316,6 +370,16 @@ def config(
         current_settings.notify_body = body
     if apps:
         current_settings.blocked_apps = process_apps_list(apps)
+    if max_lockout_mins is not None:
+        if max_lockout_mins < 1:
+            console.print("[red]Error:[/red] Maximum lockout duration must be at least 1 minute.")
+            raise typer.Exit(1)
+        console.print(
+            "\n[bold red]WARNING:[/bold red] Changing the maximum lockout duration "
+            "can lead to extended lockouts. Ensure you understand the risks. "
+            "Set this value carefully."
+        )
+        current_settings.MAX_LOCKOUT_MINUTES = max_lockout_mins
 
     current_settings.save()
 
@@ -326,9 +390,9 @@ def config(
     table.add_row("Summary Template", current_settings.notify_summary)
     table.add_row("Body Template", current_settings.notify_body)
     table.add_row("Default Blocked Apps", ", ".join(current_settings.blocked_apps))
+    table.add_row("Max Lockout Duration (m)", str(current_settings.MAX_LOCKOUT_MINUTES))
     console.print(table)
     console.print("[green]Configuration saved![/green]")
-
 
 @app.command()
 def status(

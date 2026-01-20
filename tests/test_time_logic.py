@@ -37,8 +37,10 @@ def test_calculate_from_range_future():
 def test_calculate_from_range_duration(start, end, expected_duration_seconds):
     # Use 12:00 PM as reference to avoid being "inside" evening ranges
     ref_now = datetime.combine(datetime.now().date(), time(12, 0))
-    delay, duration = calculate_from_range(start, end, now=ref_now)
+    delay, duration, total = calculate_from_range(start, end, now=ref_now)
+    # When starting in the future, duration and total should be same
     assert duration == expected_duration_seconds
+    assert total == expected_duration_seconds
 
 
 def test_calculate_from_range_already_in_range():

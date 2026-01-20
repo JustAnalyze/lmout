@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     # App Blocking
     blocked_apps: list[str] = ["antigravity", "nvim"]
 
+    # Maximum lockout duration
+    MAX_LOCKOUT_MINUTES: int = 360 # 6 hours
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -66,13 +69,13 @@ def load_settings() -> Settings:
     """Loads settings, merging with config.json if it exists."""
     global _last_settings_mtime, _cached_settings
 
-    initial = Settings()
-    config_path = initial.data_dir / "config.json"
+    base_settings = Settings()
+    config_path = base_settings.data_dir / "config.json"
 
     if not config_path.exists():
         _last_settings_mtime = None
-        _cached_settings = initial
-        return initial
+        _cached_settings = base_settings
+        return base_settings
 
     current_mtime = config_path.stat().st_mtime
     if _last_settings_mtime == current_mtime and _cached_settings is not None:
@@ -81,12 +84,17 @@ def load_settings() -> Settings:
     try:
         with open(config_path) as f:
             config_data = json.load(f)
-        _cached_settings = Settings(**initial.model_dump(), **config_data)
+
+        # Create a new settings object, where config_data overrides .env/defaults
+        final_settings = Settings(**config_data)
+        _cached_settings = final_settings
         _last_settings_mtime = current_mtime
-        return _cached_settings
+        return final_settings
     except Exception:
-        _cached_settings = initial
-        return initial
+        # On error (e.g. malformed json), return settings from .env/defaults
+        _cached_settings = base_settings
+        _last_settings_mtime = None  # Bust cache
+        return base_settings
 
 
 # The single source of truth for the app

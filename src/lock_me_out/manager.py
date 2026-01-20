@@ -228,17 +228,18 @@ class ScheduleManager:
                 break
         self.save_schedules()
 
-    def check_schedules(self) -> list[tuple[LockSchedule, int, int]]:
+    def check_schedules(self) -> list[tuple[LockSchedule, int, int, int]]:
         """
         Returns schedules sorted by their next activation delay.
+        Includes (schedule, delay, remaining_duration, total_duration).
         """
         candidates = []
         for s in self.schedules:
             if not s.enabled:
                 continue
             try:
-                delay, duration = calculate_from_range(s.start_time, s.end_time)
-                candidates.append((s, delay, duration))
+                delay, duration, total = calculate_from_range(s.start_time, s.end_time)
+                candidates.append((s, delay, duration, total))
             except Exception:
                 continue
 
