@@ -78,7 +78,7 @@ lmout config --lead 10 --apps "nvim,antigravity"
 ## 🤝 Contributing
 
 This project is built to be modular and easy to understand. Contributions are welcome!
-- **`models.py`**: Pydantic models for schedules and configs.
+- **`schema.py`**: Pydantic models for data validation, configuration, and API schemas.
 - **`manager.py`**: Business logic for managing sessions and persistence.
 - **`daemon.py`**: The background loop logic.
 - **`cli.py`**: Typer commands and user interface.
