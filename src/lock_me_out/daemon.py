@@ -139,7 +139,6 @@ def run_daemon():
                     active_info = {
                         "source": "instant",
                         "schedule_id": None,
-                        "current_phase": status["state"],
                         "remaining_secs": status["time_remaining"],
                         **instant_lockout_data,
                     }
@@ -151,7 +150,6 @@ def run_daemon():
                         active_info = {
                             "source": "schedule",
                             "schedule_id": active_sched_id,
-                            "current_phase": status["state"],
                             "start_time": sched.start_time,
                             "end_time": sched.end_time,
                             "duration_mins": current_manager.lockout_duration_seconds

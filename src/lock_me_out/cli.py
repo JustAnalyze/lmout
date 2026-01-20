@@ -200,22 +200,7 @@ def list_schedules(
 
     if active_lockout:
         rem_secs = active_lockout.get("remaining_secs", 0)
-        current_phase = active_lockout.get("current_phase")
-
-        if current_phase == "WAITING":
-            in_text = (
-                f"Starts in {rem_secs // 60}m"
-                if rem_secs > 60
-                else f"Starts in {rem_secs}s"
-            )
-        elif current_phase == "LOCKED":
-            in_text = (
-                f"Ends in {rem_secs // 60}m"
-                if rem_secs > 60
-                else f"Ends in {rem_secs}s"
-            )
-        else:
-            in_text = "N/A" # Should not happen if phase is always set
+        in_text = f"Ends in {rem_secs // 60}m" if rem_secs > 60 else f"Ends in {rem_secs}s"
         mode = "Apps Only" if active_lockout.get("block_only") else "Full Lock"
         apps = active_lockout.get("blocked_apps", [])
         blocked_apps_str = ", ".join(apps) if apps else "None"
