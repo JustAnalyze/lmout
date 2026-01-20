@@ -181,11 +181,32 @@ def list_schedules(
     """List all scheduled and active instant lockouts."""
     setup_logging(verbose=verbose)
     sm = ScheduleManager()
-    schedules_with_info = sm.check_schedules()
+    schedules_with_info = []
     all_rows = []
     from datetime import date
 
     today_str = date.today().isoformat()
+
+    for sched in sm.schedules:
+        if not sched.enabled:
+            continue
+        
+        is_skipped = today_str in sched.skipped_dates
+        if is_skipped:
+            # For skipped schedules, we don't need to calculate time.
+            # Total duration will be calculated from schedule times.
+            try:
+                _, _, total_duration = calculate_from_range(sched.start_time, sched.end_time)
+            except ValueError:
+                total_duration = 0 # Or handle as per your logic
+            schedules_with_info.append((sched, 999999, 0, total_duration))
+        else:
+            try:
+                delay, duration, total = calculate_from_range(sched.start_time, sched.end_time)
+                schedules_with_info.append((sched, delay, duration, total))
+            except ValueError:
+                # This can happen for past, non-persistent schedules. Skip them.
+                continue
 
     # Check for an active lockout from the state file
     active_lockout = None
@@ -207,6 +228,7 @@ def list_schedules(
         total_secs,
     ) in enumerate(schedules_with_info, 1):
         is_active = active_sched_id and str(sched.id) == str(active_sched_id)
+        
         is_skipped = today_str in sched.skipped_dates
 
         status_text = ""
@@ -227,7 +249,7 @@ def list_schedules(
                     else f"Ends in {rem_secs}s"
                 )
         elif is_skipped:
-            status_text = "[yellow](skipped for today, active tomorrow)[/yellow]"
+            status_text = "[yellow](skipped)[/yellow]"
         else:
             if delay_secs < 60:
                 status_text = f"{delay_secs}s" if delay_secs > 0 else "NOW"

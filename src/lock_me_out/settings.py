@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     blocked_apps: list[str] = ["antigravity", "nvim"]
 
     # Maximum lockout duration
-    MAX_LOCKOUT_MINUTES: int = 360 # 6 hours
+    MAX_LOCKOUT_MINUTES: int = 360  # 6 hours
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -58,7 +58,6 @@ class Settings(BaseSettings):
         data = self.model_dump(mode="json")
         with open(config_path, "w") as f:
             json.dump(data, f, indent=4)
-
 
 
 _last_settings_mtime: float | None = None
