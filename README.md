@@ -51,15 +51,18 @@ lmout add 8pm 9pm --desc "Evening relaxation"
 lmout add 10:30pm 11pm --apps "chrome,code" --block-only --persist
 ```
 
-### Instant Lockout
+### Starting the Daemon & Instant Lockouts
 ```bash
+# Start the daemon in the background via systemd
+lmout start
+
 # Start a 10-minute lockout after a 30-minute delay
-lmout start --delay 30 --duration 10
+lmout instant --delay 30 --duration 10
 ```
 
 ### Checking Status & Listing
 ```bash
-# See all scheduled lockouts
+# See all scheduled lockouts and any active instant/scheduled lockouts
 lmout list
 
 # Check if the daemon and active sessions are running
