@@ -25,7 +25,7 @@ Description=Lock Me Out Daemon
 After=network.target
 
 [Service]
-ExecStart=$LMOUT_PATH run
+ExecStart=$LMOUT_PATH run --daemonize
 Restart=always
 RestartSec=10
 

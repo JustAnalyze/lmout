@@ -4,6 +4,7 @@ import subprocess
 import time
 import json
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import typer
 from rich.console import Console
@@ -407,58 +408,66 @@ def status(
 def run(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging"),
     daemonize: bool = typer.Option(
-        False, "--daemonize", hidden=True, help="Internal flag to run as a daemon."
+        False,
+        "--daemonize",
+        hidden=True,
+        help="Internal flag for systemd to run the daemon directly.",
     ),
 ) -> None:
-    """Run the lockout daemon in the background."""
+    """Starts and manages the lockout daemon using systemd."""
     setup_logging(verbose=verbose)
 
     if daemonize:
+        # This is the execution path for systemd. It runs the daemon in the
+        # foreground from systemd's perspective.
         from lock_me_out.daemon import run_daemon
 
+        console.print("Daemon process started directly.")
         run_daemon()
         return
+
+    # --- User-facing 'lmout run' logic ---
+
+    service_file = Path(os.path.expanduser("~/.config/systemd/user/lmout.service"))
+    if not service_file.exists():
+        console.print(
+            "[red]Error:[/red] systemd service file not found. "
+            "Please run the `install.sh` script first."
+        )
+        raise typer.Exit(1)
 
     if is_daemon_running():
         console.print("[yellow]Daemon is already running.[/yellow]")
         return
 
-    console.print("Starting daemon in the background...")
-
-    command = [sys.executable, "-m", "lock_me_out.main", "run", "--daemonize"]
-    if verbose:
-        command.append("--verbose")
+    console.print("Daemon is not running. Attempting to start it via systemd...")
 
     try:
-        if os.name == "posix":
-            subprocess.Popen(
-                command,
-                start_new_session=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-        elif os.name == "nt":
-            DETACHED_PROCESS = 0x00000008
-            subprocess.Popen(
-                command,
-                creationflags=DETACHED_PROCESS,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-        else:
-            console.print(f"[red]Unsupported OS for daemonization: {os.name}[/red]")
-            raise typer.Exit(1)
+        subprocess.run(
+            ["systemctl", "--user", "start", "lmout.service"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
 
         console.print("Waiting for daemon to initialize...")
         time.sleep(2)
 
         if is_daemon_running():
-            console.print("[bold green]✔ Daemon started successfully.[/bold green]")
+            console.print("[bold green]✔ Daemon started successfully via systemd.[/bold green]")
         else:
             console.print(
-                "[bold red]✖ Error:[/bold red] Failed to start daemon. "
-                "Check logs for details."
+                "[bold red]✖ Error:[/bold red] Failed to start daemon. Check service "
+                "status with `systemctl --user status lmout.service` or logs with "
+                "`journalctl --user -u lmout.service`."
             )
-    except Exception as e:
-        console.print(f"[red]An unexpected error occurred: {e}[/red]")
+    except FileNotFoundError:
+        console.print(
+            "[red]Error:[/red] `systemctl` command not found. "
+            "This command requires a systemd-based OS."
+        )
+        raise typer.Exit(1)
+    except subprocess.CalledProcessError as e:
+        console.print(f"[red]Error starting systemd service:[/red]")
+        console.print(f"[dim]{e.stderr}[/dim]")
         raise typer.Exit(1)
