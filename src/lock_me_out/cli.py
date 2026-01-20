@@ -61,8 +61,8 @@ def add(
     apps: list[str] | None = typer.Option(
         None, "--apps", "-a", help="Specific apps to block (comma separated names)"
     ),
-    block_only: bool = typer.Option(
-        False, "--block-only", help="Block apps without locking the screen"
+    full_lockout: bool = typer.Option(
+        False, "--full-lockout", help="Lock the entire screen, not just apps"
     ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging"),
 ) -> None:
@@ -91,7 +91,7 @@ def add(
             description or "",
             persist=persist,
             blocked_apps=blocked_apps,
-            block_only=block_only,
+            block_only=not full_lockout,
         )
         console.print(
             f"[green]Successfully added schedule:[/green] "
@@ -111,8 +111,8 @@ def instant(
     apps: list[str] | None = typer.Option(
         None, "--apps", "-a", help="Specific apps to block"
     ),
-    block_only: bool = typer.Option(
-        False, "--block-only", help="Block apps without locking the screen"
+    full_lockout: bool = typer.Option(
+        False, "--full-lockout", help="Lock the entire screen, not just apps"
     ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging"),
 ) -> None:
@@ -154,7 +154,7 @@ def instant(
         "delay_mins": delay,
         "duration_mins": duration,
         "blocked_apps": blocked_apps,
-        "block_only": block_only,
+        "block_only": not full_lockout,
     }
 
     try:
@@ -165,7 +165,7 @@ def instant(
         console.print(f"[red]Error:[/red] Could not send command to daemon: {e}")
         raise typer.Exit(1)
 
-    mode_text = "App Blocking" if block_only else "Full Lockout"
+    mode_text = "Full Lockout" if full_lockout else "App Blocking"
     console.print(
         f"[bold green]Requesting instant {mode_text}...[/bold green] "
         f"Delay: {delay}m, Duration: {duration}m"
@@ -183,6 +183,9 @@ def list_schedules(
     sm = ScheduleManager()
     schedules_with_info = sm.check_schedules()
     all_rows = []
+    from datetime import date
+
+    today_str = date.today().isoformat()
 
     # Check for an active lockout from the state file
     active_lockout = None
@@ -197,38 +200,53 @@ def list_schedules(
     active_sched_id = active_lockout.get("schedule_id") if active_lockout else None
 
     # 1. Process scheduled lockouts
-    for i, (sched, delay_secs, duration_secs, total_secs) in enumerate(schedules_with_info, 1):
+    for i, (
+        sched,
+        delay_secs,
+        duration_secs,
+        total_secs,
+    ) in enumerate(schedules_with_info, 1):
         is_active = active_sched_id and str(sched.id) == str(active_sched_id)
-        
+        is_skipped = today_str in sched.skipped_dates
+
+        status_text = ""
         if is_active:
             # This schedule is currently active, we'll combine info
             rem_secs = active_lockout.get("remaining_secs", 0)
             current_phase = active_lockout.get("current_phase")
             if current_phase == "WAITING":
-                in_text = f"Starts in {rem_secs // 60}m" if rem_secs > 60 else f"Starts in {rem_secs}s"
+                status_text = (
+                    f"Starts in {rem_secs // 60}m"
+                    if rem_secs > 60
+                    else f"Starts in {rem_secs}s"
+                )
             else:
-                in_text = f"Ends in {rem_secs // 60}m" if rem_secs > 60 else f"Ends in {rem_secs}s"
-            
-            indicator = f"S{i}"
+                status_text = (
+                    f"Ends in {rem_secs // 60}m"
+                    if rem_secs > 60
+                    else f"Ends in {rem_secs}s"
+                )
+        elif is_skipped:
+            status_text = "[yellow](skipped for today, active tomorrow)[/yellow]"
         else:
             if delay_secs < 60:
-                in_text = f"{delay_secs}s" if delay_secs > 0 else "NOW"
+                status_text = f"{delay_secs}s" if delay_secs > 0 else "NOW"
             elif delay_secs < 3600:
-                in_text = f"{delay_secs // 60}m"
+                status_text = f"{delay_secs // 60}m"
             else:
-                in_text = f"{delay_secs // 3600}h {(delay_secs % 3600) // 60}m"
-            indicator = str(i)
+                status_text = f"{delay_secs // 3600}h {(delay_secs % 3600) // 60}m"
 
+        indicator = f"S{i}" if is_active else str(i)
         mode = "Apps Only" if sched.block_only else "Full Lock"
         blocked_apps = ", ".join(sched.blocked_apps) if sched.blocked_apps else "None"
-        
+
         all_rows.append(
             (
                 -1 if is_active else delay_secs,
                 indicator,
                 sched.start_time,
                 sched.end_time,
-                in_text,
+                status_text,
                 format_duration_seconds(total_secs),
                 mode,
                 blocked_apps,
@@ -243,20 +261,20 @@ def list_schedules(
         current_phase = active_lockout.get("current_phase")
 
         if current_phase == "WAITING":
-            in_text = (
+            status_text = (
                 f"Starts in {rem_secs // 60}m"
                 if rem_secs > 60
                 else f"Starts in {rem_secs}s"
             )
         elif current_phase == "LOCKED":
-            in_text = (
+            status_text = (
                 f"Ends in {rem_secs // 60}m"
                 if rem_secs > 60
                 else f"Ends in {rem_secs}s"
             )
         else:
-            in_text = "N/A"
-        
+            status_text = "N/A"
+
         mode = "Apps Only" if active_lockout.get("block_only") else "Full Lock"
         apps = active_lockout.get("blocked_apps", [])
         blocked_apps_str = ", ".join(apps) if apps else "None"
@@ -271,7 +289,7 @@ def list_schedules(
                 indicator,
                 active_lockout.get("start_time", "Now"),
                 active_lockout.get("end_time", "..."),
-                in_text,
+                status_text,
                 format_duration_seconds(active_lockout.get("duration_mins", 0) * 60),
                 mode,
                 blocked_apps_str,
@@ -292,7 +310,7 @@ def list_schedules(
     table.add_column("Start", style="magenta")
     table.add_column("End", style="magenta")
     table.add_column("Status", style="green")
-    table.add_column("Duration (m)", style="blue")
+    table.add_column("Duration", style="blue")
     table.add_column("Mode", style="yellow")
     table.add_column("Blocked Apps", style="magenta")
     table.add_column("Persist", style="yellow")
@@ -302,6 +320,19 @@ def list_schedules(
         table.add_row(*row[1:])
 
     console.print(table)
+
+
+@app.command()
+def unskip(
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging"),
+) -> None:
+    """Re-enables any persistent schedules that were skipped for today."""
+    setup_logging(verbose=verbose)
+    sm = ScheduleManager()
+    sm.reset_skipped_schedules()
+    console.print("[green]Reset skipped schedules for today.[/green]")
+    console.print("Any persistent schedules that were forcibly removed will now be active again.")
+
 
 
 @app.command()
@@ -320,7 +351,7 @@ def remove(
     idx_str = index.upper()
     if idx_str.startswith("S"):
         idx_str = idx_str[1:]
-    
+
     try:
         idx = int(idx_str)
     except ValueError:
@@ -329,14 +360,127 @@ def remove(
 
     if idx < 1 or idx > len(schedules_with_info):
         console.print(f"[red]Error:[/red] Index {idx} is out of range.")
-        raise typer.Exit(1) from None
+        raise typer.Exit(1)
 
     target_sched, _, _, _ = schedules_with_info[idx - 1]
+
+    # Check if this schedule is the active one
+    active_sched_id = None
+    if settings.state_file.exists():
+        try:
+            with open(settings.state_file) as f:
+                state = json.load(f)
+                active_lockout = state.get("active_lockout")
+                if active_lockout:
+                    active_sched_id = active_lockout.get("schedule_id")
+        except (json.JSONDecodeError, FileNotFoundError):
+            pass
+
+    if active_sched_id and str(target_sched.id) == str(active_sched_id):
+        console.print(
+            "[bold yellow]Warning:[/bold yellow] This schedule is part of an active lockout session."
+        )
+        console.print(
+            "You cannot remove it directly. If you are certain, use the `force-remove` command."
+        )
+        console.print(
+            "This will start a 30-second countdown to give you a moment to reconsider."
+        )
+        console.print("\nTo proceed, run: [bold]lmout force-remove[/bold]")
+        raise typer.Exit(1)
+
     sm.remove_schedule(str(target_sched.id))
     console.print(
         f"[green]Removed schedule:[/green] {target_sched.start_time} - "
         f"{target_sched.end_time}"
     )
+
+
+@app.command(name="force-remove")
+def force_remove(
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging"),
+) -> None:
+    """Forcibly removes the currently active lockout after a 30-second cooldown."""
+    setup_logging(verbose=verbose)
+
+    # Check if there is an active lockout
+    active_lockout = None
+    if settings.state_file.exists():
+        try:
+            with open(settings.state_file) as f:
+                state = json.load(f)
+                active_lockout = state.get("active_lockout")
+        except (json.JSONDecodeError, FileNotFoundError):
+            pass
+
+    if not active_lockout:
+        console.print("[yellow]No active lockout session found to remove.[/yellow]")
+        raise typer.Exit(0)
+
+    console.print("[bold red]! DANGER ![/bold red]")
+    console.print("You are about to forcibly stop an active lockout session.")
+    console.print("This action is discouraged. Please take a moment to reconsider.")
+    console.print("\nThe 30-second mindfulness countdown will now begin.")
+    console.print("Focus on your breath. Inhale deeply, then exhale slowly.")
+
+    try:
+        with console.status(
+            "[bold green]Breathing in...[/bold green]", spinner="dots"
+        ) as status:
+            for i in range(30, 0, -1):
+                # Simple breathing guidance
+                if i % 10 < 5:
+                    status.update(
+                        f"[bold green]Breathe in...[/bold green] ({i}s remaining)"
+                    )
+                else:
+                    status.update(
+                        f"[bold blue]Breathe out...[/bold blue] ({i}s remaining)"
+                    )
+                time.sleep(1)
+    except KeyboardInterrupt:
+        console.print("\n\n[yellow]Cooldown cancelled. The lockout remains active.[/yellow]")
+        raise typer.Exit(0)
+
+    console.print("\n[bold green]Cooldown complete.[/bold green]")
+
+    try:
+        confirm = typer.confirm("Do you still wish to stop the active lockout?")
+    except typer.Abort:
+        console.print("\n[yellow]Confirmation aborted. The lockout remains active.[/yellow]")
+        raise typer.Exit(0)
+
+    if not confirm:
+        console.print("[yellow]Confirmation denied. The lockout remains active.[/yellow]")
+        raise typer.Exit(0)
+
+    console.print("Sending command to stop lockout.")
+
+    # Send command to daemon to stop active lockout
+    active_sched_id = active_lockout.get("schedule_id")
+    is_persistent = False
+    if active_sched_id:
+        sm = ScheduleManager()
+        target_sched = next(
+            (s for s in sm.schedules if str(s.id) == active_sched_id), None
+        )
+        if target_sched and target_sched.persist:
+            is_persistent = True
+
+    command = {
+        "command": "stop_lockout",
+        "schedule_id": active_sched_id,
+        "is_persistent": is_persistent,
+    }
+    try:
+        with open(settings.command_file, "w") as f:
+            json.dump(command, f)
+    except IOError as e:
+        console.print(f"[red]Error:[/red] Could not send command to daemon: {e}")
+        raise typer.Exit(1)
+
+    console.print("Command sent. The lockout should stop shortly.")
+
 
 
 @app.command()

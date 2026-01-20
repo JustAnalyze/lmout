@@ -13,5 +13,6 @@ class LockSchedule(BaseModel):
     description: str | None = None
     persist: bool = False
     blocked_apps: list[str] = Field(default_factory=list)
+    skipped_dates: list[str] = Field(default_factory=list)
 
-    block_only: bool = False
+    block_only: bool = True

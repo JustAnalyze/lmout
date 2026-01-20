@@ -17,7 +17,8 @@ def _process_commands() -> tuple[LockOutManager | None, str | None, dict | None]
 
     Returns:
         A tuple containing (manager, schedule_id, extra_data) if a valid
-        command was processed, otherwise (None, None, None).
+        command was processed, otherwise (None, None, None). A special
+        schedule_id 'stop_request' is used to signal termination.
     """
     if not settings.command_file.exists():
         return None, None, None
@@ -39,11 +40,11 @@ def _process_commands() -> tuple[LockOutManager | None, str | None, dict | None]
         delay_mins = command_data.get("delay_mins", 30)
         duration_mins = command_data.get("duration_mins", 10)
         blocked_apps = command_data.get("blocked_apps", [])
-        block_only = command_data.get("block_only", False)
+        block_only = command_data.get("block_only", True)
 
         manager = LockOutManager(
             delay_mins * 60,
-            min(duration_mins, settings.MAX_LOCKOUT_MINUTES) * 60
+            min(duration_mins, settings.MAX_LOCKOUT_MINUTES) * 60,
         )
         manager.start(blocked_apps=blocked_apps, block_only=block_only)
 
@@ -57,6 +58,9 @@ def _process_commands() -> tuple[LockOutManager | None, str | None, dict | None]
             "blocked_apps": blocked_apps,
         }
         return manager, "instant", instant_data
+    elif cmd == "stop_lockout":
+        console.print("[bold red]Received command to stop active lockout.[/bold red]")
+        return None, "stop_request", command_data
 
     return None, None, None
 
@@ -76,7 +80,33 @@ def run_daemon():
 
     try:
         while True:
-            # --- Command & Schedule Processing ---
+            # --- Command Processing ---
+            # Always check for commands first, so we can stop a running session.
+            new_manager, new_id, extra_data = _process_commands()
+
+            if new_id == "stop_request":
+                if current_manager:
+                    console.print(
+                        "[bold red]Stopping active lockout via force-remove.[/bold red]"
+                    )
+                    current_manager.stop()  # This should terminate threads and cleanup
+
+                    # If the stopped schedule was persistent, skip it for today
+                    if extra_data and extra_data.get("is_persistent"):
+                        sched_id = extra_data.get("schedule_id")
+                        if sched_id:
+                            sm.skip_schedule_today(sched_id)
+                else:
+                    console.print(
+                        "[yellow]Received stop command but no active lockout found.[/yellow]"
+                    )
+                # Setting manager to None triggers cleanup logic in the is_idle block
+                current_manager = None
+                # Continue to the start of the loop to re-evaluate state immediately
+                time.sleep(1)
+                continue
+
+            # --- Schedule & State Processing ---
             is_idle = not current_manager or (
                 current_manager.get_status()["state"] == "IDLE"
             )
@@ -99,8 +129,7 @@ def run_daemon():
                     active_sched_id = None
                     instant_lockout_data = None
 
-                # 2. Check for new commands (e.g., lmout start)
-                new_manager, new_id, extra_data = _process_commands()
+                # 2. Process a 'start_instant' command if it was received
                 if new_manager:
                     current_manager = new_manager
                     active_sched_id = new_id
@@ -127,7 +156,7 @@ def run_daemon():
                             )
                             current_manager = LockOutManager(
                                 delay_secs,
-                                min(duration_secs, settings.MAX_LOCKOUT_MINUTES * 60)
+                                min(duration_secs, settings.MAX_LOCKOUT_MINUTES * 60),
                             )
                             active_sched_id = str(sched.id)
                             current_manager.start(

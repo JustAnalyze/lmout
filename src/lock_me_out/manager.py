@@ -220,6 +220,32 @@ class ScheduleManager:
         self.schedules = [s for s in self.schedules if str(s.id) != str(schedule_id)]
         self.save_schedules()
 
+    def skip_schedule_today(self, schedule_id: str):
+        """Adds today's date to the schedule's skipped_dates list."""
+        from datetime import date
+
+        today_str = date.today().isoformat()
+        for s in self.schedules:
+            if str(s.id) == str(schedule_id) and today_str not in s.skipped_dates:
+                s.skipped_dates.append(today_str)
+                self.save_schedules()
+                logger.info(f"Schedule {schedule_id} skipped for today.")
+                break
+
+    def reset_skipped_schedules(self):
+        """Removes today from all skipped_dates lists."""
+        from datetime import date
+
+        today_str = date.today().isoformat()
+        updated = False
+        for s in self.schedules:
+            if today_str in s.skipped_dates:
+                s.skipped_dates.remove(today_str)
+                updated = True
+        if updated:
+            self.save_schedules()
+            logger.info("Reset skipped dates for today.")
+
     def update_schedule(self, schedule: LockSchedule):
         """Updates an existing schedule."""
         for i, s in enumerate(self.schedules):
@@ -233,9 +259,12 @@ class ScheduleManager:
         Returns schedules sorted by their next activation delay.
         Includes (schedule, delay, remaining_duration, total_duration).
         """
+        from datetime import date
+
         candidates = []
+        today_str = date.today().isoformat()
         for s in self.schedules:
-            if not s.enabled:
+            if not s.enabled or today_str in s.skipped_dates:
                 continue
             try:
                 delay, duration, total = calculate_from_range(s.start_time, s.end_time)
