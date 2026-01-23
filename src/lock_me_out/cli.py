@@ -21,20 +21,31 @@ app = typer.Typer(help="Lock Me Out - CLI Schedule Manager")
 console = Console()
 
 
-def is_daemon_running() -> bool:
-    """Checks if the daemon is running via state file and PID."""
+def get_daemon_status() -> dict:
+    """Checks the daemon's running status and returns active lockout info."""
+    status = {"is_running": False, "active_lockout": None}
     if not settings.state_file.exists():
-        return False
+        return status
     try:
         with open(settings.state_file) as f:
             state = json.load(f)
             pid = state.get("pid")
-            if not pid:
-                return False
-            os.kill(pid, 0)  # Check if process exists
-            return True
-    except (OSError, json.JSONDecodeError, FileNotFoundError):
-        return False
+            active_lockout = state.get("active_lockout")
+            if pid:
+                try:
+                    os.kill(pid, 0)  # Check if process exists
+                    status["is_running"] = True
+                    status["active_lockout"] = active_lockout
+                except OSError:
+                    pass  # Process does not exist
+    except (json.JSONDecodeError, FileNotFoundError):
+        pass
+    return status
+
+
+def is_daemon_running() -> bool:
+    """Checks if the daemon is running via state file and PID."""
+    return get_daemon_status()["is_running"]
 
 
 def process_apps_list(apps: list[str] | None) -> list[str]:
@@ -77,10 +88,16 @@ def add(
         _, _, total_duration_secs = calculate_from_range(start_time, end_time)
         total_duration_mins = total_duration_secs // 60
 
-        if total_duration_mins > settings.MAX_LOCKOUT_MINUTES:
+        max_allowed_mins = (
+            settings.MAX_TOTAL_LOCKOUT_MINUTES
+            if full_lockout
+            else settings.MAX_APP_BLOCK_MINUTES
+        )
+        if total_duration_mins > max_allowed_mins:
+            lockout_type = "full lockout" if full_lockout else "app-block"
             console.print(
-                f"[red]Error:[/red] Scheduled lockout duration ({total_duration_mins}m) "
-                f"exceeds the maximum allowed ({settings.MAX_LOCKOUT_MINUTES}m). "
+                f"[red]Error:[/red] Scheduled {lockout_type} duration ({total_duration_mins}m) "
+                f"exceeds the maximum allowed ({max_allowed_mins}m). "
                 "This is a guardrail to prevent permanent lockouts."
             )
             raise typer.Exit(1)
@@ -119,9 +136,16 @@ def instant(
     """Start an instant lockout session via the running daemon."""
     setup_logging(verbose=verbose)
 
-    if not is_daemon_running():
+    daemon_status = get_daemon_status()
+    if not daemon_status["is_running"]:
         console.print(
             "[red]Error:[/red] Daemon is not running. Please start it with `lmout start`."
+        )
+        raise typer.Exit(1)
+    
+    if daemon_status["active_lockout"]:
+        console.print(
+            "[yellow]Warning:[/yellow] Cannot start instant lockout. An active lockout is already in progress."
         )
         raise typer.Exit(1)
 
@@ -138,10 +162,16 @@ def instant(
             )
             raise typer.Exit(1)
     
-    if duration > settings.MAX_LOCKOUT_MINUTES:
+    max_allowed_mins = (
+        settings.MAX_TOTAL_LOCKOUT_MINUTES
+        if full_lockout
+        else settings.MAX_APP_BLOCK_MINUTES
+    )
+    if duration > max_allowed_mins:
+        lockout_type = "full lockout" if full_lockout else "app-block"
         console.print(
-            f"[red]Error:[/red] Instant lockout duration ({duration}m) "
-            f"exceeds the maximum allowed ({settings.MAX_LOCKOUT_MINUTES}m). "
+            f"[red]Error:[/red] Instant {lockout_type} duration ({duration}m) "
+            f"exceeds the maximum allowed ({max_allowed_mins}m). "
             "This is a guardrail to prevent permanent lockouts."
         )
         raise typer.Exit(1)
@@ -519,8 +549,11 @@ def config(
     apps: list[str] | None = typer.Option(
         None, "--apps", "-a", help="Default apps to block (comma separated)"
     ),
-    max_lockout_mins: int | None = typer.Option(
-        None, "--max-lockout", "-m", help="Maximum lockout duration in minutes (guardrail)"
+    max_app_block_mins: int | None = typer.Option(
+        None, "--max-app-block", help="Maximum app-block duration in minutes (guardrail)"
+    ),
+    max_total_lockout_mins: int | None = typer.Option(
+        None, "--max-total-lockout", help="Maximum total lockout duration in minutes (guardrail)"
     ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging"),
 ) -> None:
@@ -536,16 +569,36 @@ def config(
         current_settings.notify_body = body
     if apps:
         current_settings.blocked_apps = process_apps_list(apps)
-    if max_lockout_mins is not None:
-        if max_lockout_mins < 1:
-            console.print("[red]Error:[/red] Maximum lockout duration must be at least 1 minute.")
+    
+    if max_app_block_mins is not None:
+        if max_app_block_mins < 1:
+            console.print("[red]Error:[/red] Maximum app-block duration must be at least 1 minute.")
+            raise typer.Exit(1)
+        current_settings.MAX_APP_BLOCK_MINUTES = max_app_block_mins
+
+    if max_total_lockout_mins is not None:
+        if max_total_lockout_mins < 1:
+            console.print("[red]Error:[/red] Maximum total lockout duration must be at least 1 minute.")
             raise typer.Exit(1)
         console.print(
-            "\n[bold red]WARNING:[/bold red] Changing the maximum lockout duration "
-            "can lead to extended lockouts. Ensure you understand the risks. "
-            "Set this value carefully."
+            "\n[bold red]!! DANGER !![/bold red]\n"
+            "You are changing the maximum duration for a TOTAL screen lockout.\n"
+            "Setting this to a high value can lock you out of your computer for an extended period "
+            "with no easy way to stop it.\n"
+            "[bold]Please be certain you understand the risks before proceeding.[/bold]"
         )
-        current_settings.MAX_LOCKOUT_MINUTES = max_lockout_mins
+        try:
+            confirm = typer.confirm("Are you sure you want to set the new maximum total lockout duration?")
+        except typer.Abort:
+            console.print("\n[yellow]Confirmation aborted. Value not changed.[/yellow]")
+            raise typer.Exit(0)
+        
+        if not confirm:
+            console.print("[yellow]Confirmation denied. Value not changed.[/yellow]")
+            raise typer.Exit(0)
+
+        current_settings.MAX_TOTAL_LOCKOUT_MINUTES = max_total_lockout_mins
+
 
     current_settings.save()
 
@@ -556,7 +609,8 @@ def config(
     table.add_row("Summary Template", current_settings.notify_summary)
     table.add_row("Body Template", current_settings.notify_body)
     table.add_row("Default Blocked Apps", ", ".join(current_settings.blocked_apps))
-    table.add_row("Max Lockout Duration (m)", str(current_settings.MAX_LOCKOUT_MINUTES))
+    table.add_row("Max App-Block Duration (m)", str(current_settings.MAX_APP_BLOCK_MINUTES))
+    table.add_row("Max Total Lockout (m)", str(current_settings.MAX_TOTAL_LOCKOUT_MINUTES))
     console.print(table)
     console.print("[green]Configuration saved![/green]")
 

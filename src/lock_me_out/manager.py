@@ -11,6 +11,7 @@ from lock_me_out.utils.processes import (
     is_screen_locked,
     kill_processes,
     lock_screen,
+    wait_for_unlock,
 )
 from lock_me_out.utils.time import calculate_from_range
 
@@ -143,13 +144,21 @@ class LockOutManager:
                 if not is_screen_locked():
                     lock_screen()
 
-            # Wait for 2 seconds or until stop event is set
-            if self._stop_event.wait(timeout=2):
-                return  # Stop event was set, exit early
+            # Smart Wait: If screen is locked, use event monitor (efficient).
+            # If not locked (or block-only), poll normally.
+            if not self.block_only and is_screen_locked():
+                # Wait efficiently for unlock signal or timeout (10s)
+                logger.debug("Screen is locked. Entering efficient wait (D-Bus monitor).")
+                wait_for_unlock(self._stop_event, timeout=10)
+            else:
+                # Wait for 2 seconds or until stop event is set
+                if self._stop_event.wait(timeout=2):
+                    return  # Stop event was set, exit early
 
         if not self._stop_event.is_set():
             logger.info("Lockout duration finished.")
             send_notification("Lockout Finished", "You can now resume your work.")
+
 
 
 class ScheduleManager:

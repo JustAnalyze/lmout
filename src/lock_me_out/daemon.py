@@ -42,15 +42,22 @@ def _process_commands() -> tuple[LockOutManager | None, str | None, dict | None]
         blocked_apps = command_data.get("blocked_apps", [])
         block_only = command_data.get("block_only", True)
 
+        max_allowed_mins = (
+            settings.MAX_APP_BLOCK_MINUTES
+            if block_only
+            else settings.MAX_TOTAL_LOCKOUT_MINUTES
+        )
+        effective_duration_mins = min(duration_mins, max_allowed_mins)
+
         manager = LockOutManager(
             delay_mins * 60,
-            min(duration_mins, settings.MAX_LOCKOUT_MINUTES) * 60,
+            effective_duration_mins * 60,
         )
         manager.start(blocked_apps=blocked_apps, block_only=block_only)
 
         # Data for state reporting
         instant_data = {
-            "duration_mins": min(duration_mins, settings.MAX_LOCKOUT_MINUTES),
+            "duration_mins": effective_duration_mins,
             "start_time": (datetime.now() + timedelta(minutes=delay_mins)).strftime(
                 "%I:%M%p"
             ),
@@ -154,9 +161,19 @@ def run_daemon():
                             body = current_settings.notify_body.format(
                                 start_time=sched.start_time
                             )
+
+                            max_allowed_mins = (
+                                settings.MAX_APP_BLOCK_MINUTES
+                                if sched.block_only
+                                else settings.MAX_TOTAL_LOCKOUT_MINUTES
+                            )
+                            effective_duration_secs = min(
+                                duration_secs, max_allowed_mins * 60
+                            )
+
                             current_manager = LockOutManager(
                                 delay_secs,
-                                min(duration_secs, settings.MAX_LOCKOUT_MINUTES * 60),
+                                effective_duration_secs,
                             )
                             active_sched_id = str(sched.id)
                             current_manager.start(

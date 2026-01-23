@@ -35,15 +35,16 @@ class Settings(BaseSettings):
         return str(Path(__file__).resolve().parent / "resources" / "icon.png")
 
     # Configuration
-    notify_lead_minutes: int = 5
+    notify_lead_minutes: int = 3
     notify_summary: str = "Lockout in {minutes} minutes"
     notify_body: str = "A scheduled lockout will start at {start_time}."
 
     # App Blocking
     blocked_apps: list[str] = ["antigravity", "nvim"]
 
-    # Maximum lockout duration
-    MAX_LOCKOUT_MINUTES: int = 360  # 6 hours
+    # Maximum lockout durations
+    MAX_APP_BLOCK_MINUTES: int = 360  # 6 hours
+    MAX_TOTAL_LOCKOUT_MINUTES: int = 60  # 1 hour
 
     model_config = SettingsConfigDict(
         env_file=".env",
